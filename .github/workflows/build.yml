@@ -34,10 +34,21 @@ jobs:
           python3 -m pip install Pillow
           python3 - <<'PY'
           from PIL import Image
-          path = "source/app/src/main/res/drawable-nodpi/sktr_mark.png"
-          with Image.open(path) as image:
+          from pathlib import Path
+
+          icon = Path("source/app/src/main/res/drawable-nodpi/sktr_mark.png")
+          with Image.open(icon) as image:
               fixed = image.convert("RGBA")
-          fixed.save(path, format="PNG")
+          fixed.save(icon, format="PNG")
+
+          config = Path("source/app/src/main/res/xml/network_security_config.xml")
+          text = config.read_text()
+          text = text.replace("<domain>", '<domain includeSubdomains="false">')
+          config.write_text(text)
+
+          build = Path("source/app/build.gradle")
+          with build.open("a") as file:
+              file.write("\nandroid { lint { disable 'ExpiredTargetSdkVersion' } }\n")
           PY
           gradle -p source assembleRelease --no-daemon
 
