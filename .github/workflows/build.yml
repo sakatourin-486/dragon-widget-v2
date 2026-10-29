@@ -30,7 +30,16 @@ jobs:
         run: unzip -q 'SaKaTouRin-source.zip' -d source
 
       - name: 编译 APK
-        run: gradle -p source assembleRelease --no-daemon
+        run: |
+          python3 -m pip install Pillow
+          python3 - <<'PY'
+          from PIL import Image
+          path = "source/app/src/main/res/drawable-nodpi/sktr_mark.png"
+          with Image.open(path) as image:
+              fixed = image.convert("RGBA")
+          fixed.save(path, format="PNG")
+          PY
+          gradle -p source assembleRelease --no-daemon
 
       - name: 固定签名并验证
         env:
