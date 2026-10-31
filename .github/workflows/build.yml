@@ -27,7 +27,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: 解压源码
-        run: unzip -q 'SaKaTouRin-source-4.zip' -d source
+        run: unzip -q 'SaKaTouRin-v0.6-source.zip' -d source
 
       - name: 编译 APK
         run: |
