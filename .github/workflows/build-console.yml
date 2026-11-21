@@ -1,0 +1,81 @@
+name: Build Console APK
+'on': [create]
+
+permissions: {}
+
+jobs:
+  build:
+    if: startsWith(github.ref, 'refs/heads/build/apk-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Assemble APK
+        shell: bash
+        working-directory: "."
+        env:
+          BUILD_TASK: ":app:assembleDebug"
+          USE_WRAPPER: "no"
+        run: |
+          if [[ "$USE_WRAPPER" == yes ]]; then
+            bash ./gradlew "$BUILD_TASK" --no-daemon
+          else
+            gradle "$BUILD_TASK" --no-daemon
+          fi
+      - name: Verify APK signature
+        shell: bash
+        working-directory: "."
+        env:
+          MODULE_DIR: "app"
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          signers=("$ANDROID_HOME"/build-tools/*/apksigner)
+          signer="$(printf '%s\n' "${signers[@]}" | sort -V | tail -n1)"
+          test -x "$signer"
+          apks=("$MODULE_DIR"/build/outputs/apk/**/*.apk)
+          if (( ${#apks[@]} == 0 )); then echo "APK missing from $MODULE_DIR."; exit 1; fi
+          mkdir -p "$RUNNER_TEMP/apk"
+          for apk in "${apks[@]}"; do
+            "$signer" verify "$apk"
+            destination="$RUNNER_TEMP/apk/${apk##*/}"
+            if [[ -e "$destination" ]]; then echo "Duplicate APK name: ${apk##*/}"; exit 1; fi
+            cp -- "$apk" "$destination"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-apks
+          path: ${{ runner.temp }}/apk/*.apk
+          if-no-files-found: error
+
+  deliver:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-apks
+          path: apk
+      - name: Publish APK release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_SHA: ${{ github.sha }}
+          RELEASE_TAG: apk-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          gh release create "$RELEASE_TAG" apk/*.apk \
+            --target "$BUILD_SHA" --prerelease \
+            --title "APK $RELEASE_TAG" --notes "Built from $BUILD_SHA."
